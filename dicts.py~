@@ -1,0 +1,11 @@
+from collections import defaultdict
+
+input_string = input("Enter string: ").split(" ")
+
+word_count = defaultdict(0)
+
+for word in input_string:
+    word_count[word] += 1
+
+for key, value in word_count,items:
+    print(key, value)

@@ -1,0 +1,7 @@
+import math
+
+a = 3
+b = 5
+
+c = sqrty=((a*a) + (b*b))
+print(c)

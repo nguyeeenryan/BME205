@@ -1,0 +1,184 @@
+import sys
+import itertools, math
+from collections import defaultdict
+
+class FastAreader:
+    def __init__(self, fname=''):
+        '''contructor: saves attribute fname '''
+
+        self.fname = fname
+        self.fileH = None
+
+    def doOpen(self):
+        if self.fname == '':
+            return sys.stdin
+        else:
+            return open(self.fname)
+
+    def readFasta(self):
+
+        header = ''
+        sequence = ''
+
+        with self.doOpen() as self.fileH:
+
+            header = ''
+            sequence = ''
+
+            # skip to first fasta header
+            line = self.fileH.readline()
+            while not line.startswith('>'):
+                line = self.fileH.readline()
+            header = line[1:].rstrip()
+
+            for line in self.fileH:
+                if line.startswith('>'):
+                    yield header, sequence
+                    header = line[1:].rstrip()
+                    sequence = ''
+                else:
+                    sequence += ''.join(line.rstrip().split()).upper()
+
+        yield header, sequence
+
+class CommandLine():
+    '''
+    Handle the command line, usage and help requests.
+
+    CommandLine uses argparse, now standard in 2.7 and beyond. 
+    it implements a standard command line argument parser with various argument options,
+    a standard usage and help, and an error termination mechanism do-usage_and_die.
+
+    attributes:
+    all arguments received from the commandline using .add_argument will be
+    avalable within the .args attribute of object instantiated from CommandLine.
+    For example, if myCommandLine is an object of the class, and requiredbool was
+    set as an option using add_argument, then myCommandLine.args.requiredbool will
+    name that option.
+
+    '''
+
+    def __init__(self, inOpts=None):
+        '''
+        CommandLine constructor.
+        Implements a parser to interpret the command line argv string using argparse.
+        '''
+
+        import argparse
+        self.parser = argparse.ArgumentParser(
+            description='Program prolog - a brief description of what this thing does',
+            epilog='Program epilog - some other stuff you feel compelled to say',
+            add_help=True,  # default is True
+            prefix_chars='-',
+            usage='%(prog)s [options] -option1[default] <input >output'
+        )
+
+        self.parser.add_argument('-l', '--minMotif', nargs='?', default=1, action='store',
+                                 help='min kMer size ')
+        self.parser.add_argument('-m', '--maxMotif', nargs='?', default=8, action='store',
+                                 help='max kMer size ')
+        self.parser.add_argument('-c', '--cutoff', nargs='?', type=float, default=.01, action='store',
+                                 help='Zscore cutoff')
+
+
+        self.parser.add_argument('-v', '--version', action='version', version='%(prog)s 0.1')
+        if inOpts is None:
+            self.args = self.parser.parse_args()
+        else:
+            self.args = self.parser.parse_args(inOpts)
+
+            
+class Genome:
+    """ """
+    
+    valid_bases = 'ACGT'
+    
+    def __init__(self, minK, maxK, cutoff):  
+        """Constructs genome object and creates a dictionary containing all possible kmers"""
+        
+        self.min = int(minK)
+        self.max = int(maxK)
+        self.cutoff = cutoff
+        
+        self.counts = defaultdict(lambda: 0)
+        
+        
+        for k in range(self.min, self.max+1):
+            newCount = {''.join(kmer):0 for kmer in itertools.product(Genome.valid_bases, repeat=k)}
+            self.counts.update(newCount)
+        
+        self.n = sum(self.counts.values())
+    
+    def reverse_c(self, seq):
+        '''Provides reverse complement of given sequence'''
+        return seq[::-1].translate(str.maketrans('ACGTN', 'TGCAN'))
+
+    def addSeq(self, seq):
+        '''Iterates over sequence and counts kmers'''
+        for k in range(self.min - 2, self.max + 1):
+            for b in range(0, len(seq) - self.max):
+                kmer = seq[b:b+k]
+                rc_kmer = self.reverse_c(kmer)
+                
+                if kmer in self.counts:
+                    self.counts[kmer] += 1 #I LOVE DEFAULT DICT!
+                if (rc_kmer != kmer) and rc_kmer in self.counts:
+                    self.counts[rc_kmer] += 1
+                
+        self.n += len(seq) - self.max #adds to the count
+        
+        
+    def E(self,s):
+        '''returns the expected count of a kmer, implementation taken from stealth ''' 
+        try:
+            return self.counts[s[:-1]] * self.counts[s[1:]] / self.counts[s[1:-1]]
+        except KeyError:
+            return self.counts[s]
+        except ZeroDivisionError:
+            return 0.
+
+    def Zscore(self, s):
+        '''returns the Z score of the kmer, implementation taken from stealth'''
+        mu = self.E(s)
+        var = mu*(1-mu/self.n)
+        if var == 0.0: #Catches any zeroes before division
+            return 1000000000
+        return (self.counts[s] - mu)/math.sqrt(var)
+
+    def Evalue(self,s):
+        """Return expected kmer count for a sequence using a Markov (k-2) model. Implementation courtesy of Konstantinos."""
+        try:
+            # Multiply counts of each k-1mer and divide by the k-2mer that contains the middle sequnces.
+            return self.counts[s[:-1]] * self.counts[s[1:]] / self.counts[s[1:-1]]
+        except ZeroDivisionError:
+            return 0.
+        except KeyError:
+            return self.counts[s]
+
+
+def main (inFile=None, options = None):
+    ''' Setup necessary objects, read data and print the final report.'''
+    cl = CommandLine(options) # setup the command line
+    sourceReader = FastAreader(inFile) # setup the Fasta reader Object
+    thisGenome = Genome(cl.args.minMotif, cl.args.maxMotif, cl.args.cutoff) # setup a Genome object
+    
+    ###
+    # Give your Genome some data and tell it to do stuff
+    ###
+
+    for head, seq in sourceReader.readFasta():
+        thisGenome.addSeq(seq)
+
+    copy_dict = {k: v for k, v in thisGenome.counts.items() if v}
+    final_list = []
+    for kmer, count in copy_dict.items():
+        if thisGenome.Zscore(kmer) < thisGenome.cutoff:
+            final_list.append([kmer, thisGenome.reverse_c(kmer), count, thisGenome.Evalue(kmer), thisGenome.Zscore(kmer)])
+
+    final_list.sort(key=lambda e: (len(e[0]), -e[4]), reverse = True )
+    print("N = ", thisGenome.n)
+    for kmer in final_list:
+        print('{0:8}:{1:8}\t{2:0d}\t{3:0.2f}\t{4:0.2f}'.format(kmer[0], kmer[1], kmer[2], kmer[3], kmer[4]))
+    
+if __name__ == "__main__":
+    main()

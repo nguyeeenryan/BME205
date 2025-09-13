@@ -1,0 +1,38 @@
+import sys
+import numpy as np
+import pandas as pd
+
+# A    ->    A    ->    B
+# 0.5      0.194       0.806
+
+def path_prob(path, t_matrix):
+    prob = 0.5
+    
+    for x in range(len(path)-1):
+        initial = path[x]
+        next = path[x+1]
+        
+        prob *= t_matrix.loc[initial, next]
+    
+    return prob
+
+
+def main(inFile=None, options=None):
+    lines = []
+
+    for line in sys.stdin:
+        lines.append(line.strip())
+
+    path = lines[0]
+    states = lines[2].split()
+    t_matrix = []
+
+    for x in range(5,5+len(states)):
+        t_matrix.append(lines[x].split()[1:])
+
+    t_matrix_final = pd.DataFrame(t_matrix, index=states, columns=states).astype(float)
+
+    print(path_prob(path, t_matrix_final))
+
+if __name__ == "__main__":
+    main()

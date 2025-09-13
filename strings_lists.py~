@@ -1,0 +1,5 @@
+
+input_string = input("Enter String"))
+indices = input("Enter indices a-b, c-d")
+
+print(input_string, indices)

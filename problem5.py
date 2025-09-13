@@ -1,0 +1,10 @@
+
+int_list = [int(x) for x in input("Enter two integers 'A B': ").split(" ")]
+
+running_sum = 0
+
+for x in range(int_list[0], int_list[1]+1):
+    if x%2 != 0:
+        running_sum += x
+
+print(running_sum)

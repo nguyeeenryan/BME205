@@ -1,0 +1,12 @@
+f = open("rosalind_ini5.txt", "r")
+
+f2 = open("result_file.txt", "x")
+
+lines = f.readlines()
+count = 0
+
+for line in lines:
+    if count%2  == 0:
+        f2.write(line)
+        count += 1
+        
